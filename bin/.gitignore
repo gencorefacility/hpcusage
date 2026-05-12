@@ -1,0 +1,9 @@
+# --- Python Specific ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+config.json
+temp_flow_def.json

@@ -2,10 +2,12 @@
 This guide outlines the step-by-step process to deploy a Globus Compute function, wrap it in a Globus Flow, and schedule it using a Globus Timer.
 
 ## Prerequisites
-1. **Environment:** You must run these commands from within your configured Apptainer container that has `globus-cli`, `globus-sdk`, and `globus-compute-sdk` installed.
+
+1. **Environment:** You must create an isolated environment with the required Globus tools. Create a file named environment.yml with the following content:
 
 ```bash
-apptainer run venv_globus_deploy.sif /bin/bash
+conda env create -f environment.yml
+conda activate globus_env
 ```
 
 2. **Compute Endpoint:** You need your target Compute Endpoint UUID ready.

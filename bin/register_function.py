@@ -1,4 +1,5 @@
-# compute_functions.py
+# register_function.py
+from globus_compute_sdk import Client
 
 def submit_monthly_update():
     import subprocess
@@ -30,3 +31,19 @@ def submit_monthly_update():
         return {"status": "error", "stderr": e.stderr}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+
+# ---------------------------------------------------------
+# REGISTRATION LOGIC
+# ---------------------------------------------------------
+if __name__ == "__main__":
+    print("Connecting to Globus Compute...")
+    gcc = Client()
+
+    print("Registering function...")
+    # This packages the function and its internal imports as a single payload
+    func_uuid = gcc.register_function(submit_monthly_update)
+
+    print("\n✅ Registration Successful!")
+    print(f"Function ID: {func_uuid}")
+    print("\nCopy this Function ID and paste it into your flow_def.json file.")

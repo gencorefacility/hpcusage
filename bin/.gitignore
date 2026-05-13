@@ -5,5 +5,4 @@ __pycache__/
 *.pyd
 .Python
 
-config.json
-temp_flow_def.json
+flow_def.json

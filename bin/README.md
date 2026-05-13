@@ -93,7 +93,7 @@ globus timer create flow YOUR_FLOW_ID --name "Daily Check for Monthly Update" --
 
 If successful, the CLI will output a Timer ID. Your pipeline is now live and will execute on the defined schedule.
 
-**Updating the Pipeline Later**
+## Updating the Pipeline Later
 
 If you update your Python code in the future, you do not need to recreate the Timer or the Flow. Just do the following:
 

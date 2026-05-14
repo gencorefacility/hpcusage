@@ -88,7 +88,7 @@ globus login --no-local-server --timer flow:YOUR_FLOW_ID
 Now that the Timer service has permission, you can schedule the automation. Run the following command (replace YOUR_FLOW_ID with your actual ID):
 
 ```bash
-globus timer create flow YOUR_FLOW_ID --name "Daily Check for Monthly Update" --interval 1d --start "2026-05-12T06:00:00Z"
+globus timer create flow YOUR_FLOW_ID --name "CGSB Daily Check for Monthly Storage Update" --interval 1d --start "2026-05-12T06:00:00Z"
 ```
 
 If successful, the CLI will output a Timer ID. Your pipeline is now live and will execute on the defined schedule.

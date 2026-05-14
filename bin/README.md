@@ -62,7 +62,7 @@ Create a file named `flow_def.json`. Replace `YOUR_ENDPOINT_ID` and `YOUR_FUNCTI
 Use the Globus CLI to create the flow based on your JSON definition.
 
 ```bash
-globus flows create "Monthly Update Flow" flow_def.json
+globus flows create "CGSB Monthly Storage Update Flow" flow_def.json
 ```
 
 **Look at the JSON output and copy the `id` (this is your Flow ID).**

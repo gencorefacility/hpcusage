@@ -19,8 +19,8 @@ def submit_monthly_update():
         "-N1",
         "--output=/dev/null",
         "--error=/dev/null",
-        "--job-name=MONTHLY_UPDATE",
         "--time=02:00:00", 
+        "--job-name=MONTHLY_UPDATE",
         f"--wrap=python3 {update_script}"
     ]
 

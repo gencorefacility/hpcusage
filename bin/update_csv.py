@@ -21,14 +21,24 @@ def get_vast_capacity(vast_path):
     """Fetches the capacity from the VAST API and converts bytes to TiB."""
     encoded_path = urllib.parse.quote(vast_path, safe='')
     url = API_BASE_URL + encoded_path
-    
+    print(url) 
     try:
         req = urllib.request.Request(url)
         with urllib.request.urlopen(req) as response:
             data = json.loads(response.read().decode())
-            # Vast 'capacity' array is typically: [logical_used, physical_used, quota]
-            bytes_used = data.get(vast_path, {}).get("capacity", [0])[0]
-            return bytes_used / (1024 ** 4)
+  
+            # Extract the capacity array, defaulting to [0, 0, 0] to prevent IndexErrors
+            capacity_array = data.get(vast_path, {}).get("capacity", [0, 0, 0])
+
+            # Map the array based on: [usable, unique, logical]
+            usable_bytes = capacity_array[0]
+            unique_bytes = capacity_array[1]
+            logical_bytes = capacity_array[2]
+            
+            # Change this return variable depending on which metric you need to track!
+            # Example: returning logical capacity in TiB
+            return logical_bytes / (1024 ** 4)
+
     except Exception as e:
         print(f"Error fetching API for {vast_path}: {e}")
         return 0.0

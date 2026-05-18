@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NYU Biology HPC Storage Usage</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        nyu: '#57068c',
+                        nyulight: '#8900e1',
+                        nyubg: '#f3e8fa'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .arrow-icon { transition: transform 0.2s ease-in-out; }
+        .expanded .arrow-icon { transform: rotate(90deg); }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans text-gray-900 flex flex-col min-h-screen">
+
+    <nav class="bg-nyu text-white p-4 md:p-6 shadow-md">
+        <div class="container mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="text-center md:text-left">
+                <h1 class="text-2xl font-bold tracking-wide">HPC Storage Dashboard</h1>
+                <p class="text-purple-200 text-sm">NYU Center for Genomics and Systems Biology</p>
+            </div>
+
+            <div class="flex items-center gap-4 md:gap-6 bg-nyulight/30 px-4 py-2 rounded-lg border border-purple-500/30">
+                <div class="text-right">
+                    <span class="text-[10px] text-purple-300 uppercase tracking-wider block font-bold">Latest Data</span>
+                    <div id="latest-month-label" class="text-lg md:text-xl font-semibold text-purple-50">Loading...</div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container mx-auto py-8 px-4 flex-grow">
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 border-l-4 border-l-nyu col-span-1 flex flex-col justify-center">
+                <p class="text-gray-500 text-sm uppercase font-bold mb-1">Total Department Storage</p>
+                <div class="flex items-baseline gap-3">
+                    <h2 id="global-storage" class="text-4xl font-bold text-gray-800">0.00 <span class="text-lg text-gray-500 font-normal">TiB</span></h2>
+                </div>
+                <div id="global-storage-growth" class="mt-2"></div>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 col-span-1 md:col-span-2">
+                <h3 class="text-sm uppercase font-bold text-gray-500 mb-2">Department Growth Trend</h3>
+                <div class="relative h-24 w-full">
+                    <canvas id="globalChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div class="p-4 bg-gray-50 border-b border-gray-200 flex flex-col sm:flex-row justify-between items-center gap-4">
+                <h3 class="font-bold text-gray-800">Lab Usage Details</h3>
+                <input type="text" id="searchInput" placeholder="Search lab..." class="px-3 py-1.5 border border-gray-300 rounded-md text-sm outline-none focus:ring-2 focus:ring-nyu w-full sm:w-64">
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-nyu text-white text-sm uppercase tracking-wider">
+                        <tr>
+                            <th class="p-4 w-10 border-b border-nyulight"></th>
+
+                            <th class="p-4 font-semibold cursor-pointer hover:bg-nyulight transition-colors group select-none border-b border-nyulight" onclick="handleSort('name')" title="Sort by Lab Name">
+                                <div class="flex items-center gap-2">
+                                    Lab Name <span id="sort-name" class="text-xs">▲</span>
+                                </div>
+                            </th>
+
+                            <th class="p-4 font-semibold cursor-pointer hover:bg-nyulight transition-colors group select-none border-b border-nyulight" onclick="handleSort('storage')" title="Sort by Storage">
+                                <div class="flex items-center gap-2">
+                                    Storage (TiB) <span id="sort-storage" class="text-xs text-purple-300 opacity-50 group-hover:opacity-100">↕</span>
+                                </div>
+                            </th>
+
+                            <th class="p-4 font-semibold border-b border-nyulight">Monthly Growth</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body" class="divide-y divide-gray-100">
+                        <tr><td colspan="4" class="p-8 text-center text-gray-500">Initializing Dashboard...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        </main>
+
+    <footer class="bg-gray-100 border-t border-gray-200 py-6 mt-8">
+        <div class="container mx-auto px-4 text-center text-sm text-gray-500">
+            For API access or database integrations, download the <a href="data.csv" target="_blank" class="text-nyu hover:underline font-semibold">Raw CSV Data</a>.
+        </div>
+    </footer>
+
+    <script>
+        let timeSeriesData = [];
+        let currentSearchQuery = "";
+        let activeCharts = {};
+
+        // Sorting State
+        let currentSortColumn = 'name'; // 'name' or 'storage'
+        let currentSortDirection = 'asc'; // 'asc' or 'desc'
+
+        const fmtTiB = (num) => parseFloat(num).toFixed(3);
+
+        function getGrowthHTML(current, previous) {
+            if (previous === undefined || previous === null) return `<span class="text-gray-400 text-sm italic">New</span>`;
+            const diff = current - previous;
+            if (diff === 0) return `<span class="text-gray-400 text-sm">-</span>`;
+
+            // Calculate Percentage Growth
+            let pctStr = "";
+            if (previous > 0) {
+                const pct = (Math.abs(diff) / previous) * 100;
+                pctStr = ` (${pct.toFixed(1)}%)`;
+            }
+
+            const displayVal = fmtTiB(Math.abs(diff));
+            const sign = diff > 0 ? '+' : '-';
+            const colorClass = diff > 0 ? 'text-red-700 bg-red-100' : 'text-green-700 bg-green-100';
+
+            return `<span class="whitespace-nowrap ${colorClass} px-2 py-0.5 rounded text-sm font-semibold">${sign}${displayVal} TiB${pctStr}</span>`;
+        }
+
+        async function initApp() {
+            try {
+                const response = await fetch(`data.csv?v=${new Date().getTime()}`);
+                if (!response.ok) throw new Error(`Failed to load data.csv`);
+
+                const text = await response.text();
+                const lines = text.replace(/\r/g, '').trim().split('\n');
+                const groupedByMonth = {};
+
+                for(let i = 1; i < lines.length; i++) {
+                    if (!lines[i].trim()) continue;
+                    const parts = lines[i].split(',');
+
+                    if(parts.length >= 6) {
+                        const year = parts[0].trim();
+                        const month = parts[1].trim();
+                        const lab = parts[2].trim();
+                        const total = parseFloat(parts[3]);
+                        const cgsb = parseFloat(parts[4]);
+                        const gencore = parseFloat(parts[5]);
+
+                        if(isNaN(total)) continue;
+
+                        const combinedMonthString = `${month} ${year}`;
+                        if(!groupedByMonth[combinedMonthString]) {
+                            groupedByMonth[combinedMonthString] = { monthString: combinedMonthString, year: year, month: month, labs: {} };
+                        }
+                        groupedByMonth[combinedMonthString].labs[lab] = { total_tib: total, cgsb_tib: cgsb, gencore_tib: gencore };
+                    }
+                }
+
+                timeSeriesData = Object.values(groupedByMonth).map(m => {
+                    return { monthString: m.monthString, dateObj: new Date(`${m.month} 1, ${m.year}`), labs: m.labs };
+                }).sort((a, b) => b.dateObj - a.dateObj);
+
+                if(timeSeriesData.length > 0) {
+                    document.getElementById('latest-month-label').innerText = timeSeriesData[0].monthString;
+                    renderDashboard();
+                } else {
+                    document.getElementById('table-body').innerHTML = `<tr><td colspan="4" class="p-8 text-center text-red-500 font-bold">Error: No valid rows found in CSV.</td></tr>`;
+                }
+            } catch (error) {
+                console.error("Dashboard Error:", error);
+                document.getElementById('table-body').innerHTML = `<tr><td colspan="4" class="p-8 text-center text-red-600 font-bold">System Error: ${error.message}</td></tr>`;
+            }
+        }
+
+        function handleSort(column) {
+            if (currentSortColumn === column) {
+                currentSortDirection = currentSortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSortColumn = column;
+                currentSortDirection = column === 'storage' ? 'desc' : 'asc';
+            }
+            renderTable();
+        }
+
+        function updateSortUI() {
+            const nameIcon = document.getElementById('sort-name');
+            const storageIcon = document.getElementById('sort-storage');
+
+            nameIcon.className = currentSortColumn === 'name' ? 'text-xs text-white font-bold' : 'text-xs text-purple-300 opacity-50 group-hover:opacity-100';
+            storageIcon.className = currentSortColumn === 'storage' ? 'text-xs text-white font-bold' : 'text-xs text-purple-300 opacity-50 group-hover:opacity-100';
+
+            nameIcon.innerText = currentSortColumn === 'name' ? (currentSortDirection === 'asc' ? '▲' : '▼') : '↕';
+            storageIcon.innerText = currentSortColumn === 'storage' ? (currentSortDirection === 'asc' ? '▲' : '▼') : '↕';
+        }
+
+        function renderDashboard() {
+            const latest = timeSeriesData[0];
+            const previous = timeSeriesData[1];
+
+            let currentGlobalStorage = 0;
+            Object.values(latest.labs).forEach(lab => currentGlobalStorage += lab.total_tib);
+
+            let previousGlobalStorage = 0;
+            if (previous) {
+                Object.values(previous.labs).forEach(lab => previousGlobalStorage += lab.total_tib);
+            }
+
+            document.getElementById('global-storage').innerHTML = `${fmtTiB(currentGlobalStorage)} <span class="text-lg text-gray-500 font-normal">TiB</span>`;
+            if (previous) {
+                document.getElementById('global-storage-growth').innerHTML = getGrowthHTML(currentGlobalStorage, previousGlobalStorage) + " Since Last Month";
+            }
+
+            renderGlobalChart();
+            renderTable();
+        }
+
+        function renderGlobalChart() {
+            const ctx = document.getElementById('globalChart').getContext('2d');
+            const labels = [];
+            const dataPoints = [];
+
+            for(let i = timeSeriesData.length - 1; i >= 0; i--) {
+                const monthData = timeSeriesData[i];
+                const shortDate = monthData.dateObj.toLocaleString('default', { month: 'short', year: '2-digit' });
+                labels.push(shortDate);
+
+                let monthTotal = 0;
+                Object.values(monthData.labs).forEach(l => monthTotal += l.total_tib);
+                dataPoints.push(monthTotal);
+            }
+
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Total Department Storage (TiB)',
+                        data: dataPoints,
+                        borderColor: '#57068c',
+                        backgroundColor: 'rgba(87, 6, 140, 0.1)',
+                        borderWidth: 2,
+                        pointRadius: 2,
+                        pointHoverRadius: 6,
+                        pointBackgroundColor: '#8900e1',
+                        fill: true,
+                        tension: 0.3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: false, ticks: { maxTicksLimit: 5 } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('table-body');
+
+            activeCharts = {};
+
+            tbody.innerHTML = "";
+            const latest = timeSeriesData[0];
+            const previous = timeSeriesData[1];
+
+            let labsArray = Object.keys(latest.labs).map(labName => ({
+                name: labName,
+                data: latest.labs[labName]
+            }));
+
+            labsArray.sort((a, b) => {
+                if (currentSortColumn === 'name') {
+                    const comparison = a.name.localeCompare(b.name);
+                    return currentSortDirection === 'asc' ? comparison : -comparison;
+                } else if (currentSortColumn === 'storage') {
+                    const comparison = a.data.total_tib - b.data.total_tib;
+                    return currentSortDirection === 'asc' ? comparison : -comparison;
+                }
+            });
+
+            if (currentSearchQuery) {
+                labsArray = labsArray.filter(l => l.name.toLowerCase().includes(currentSearchQuery.toLowerCase()));
+            }
+
+            updateSortUI();
+
+            labsArray.forEach((lab, index) => {
+                const prevData = previous && previous.labs[lab.name] ? previous.labs[lab.name] : null;
+                const rowId = `row-${index}`;
+                const detailId = `detail-${index}`;
+
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-nyubg cursor-pointer transition-colors border-b border-gray-100 group";
+                tr.onclick = () => toggleRow(rowId, detailId, lab.name, index);
+                tr.id = rowId;
+
+                tr.innerHTML = `
+                    <td class="p-4 text-gray-400">
+                        <svg class="w-4 h-4 arrow-icon group-hover:text-nyu" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                    </td>
+                    <td class="p-4 font-bold text-nyu">${lab.name}</td>
+                    <td class="p-4 font-mono text-gray-800">${fmtTiB(lab.data.total_tib)}</td>
+                    <td class="p-4">${getGrowthHTML(lab.data.total_tib, prevData?.total_tib)}</td>
+                `;
+
+                let historyHTML = '';
+                for(let i = 0; i < timeSeriesData.length; i++) {
+                    const mData = timeSeriesData[i].labs[lab.name];
+                    const prevMonthData = timeSeriesData[i+1] ? timeSeriesData[i+1].labs[lab.name] : null;
+
+                    if(mData) {
+                        historyHTML += `
+                            <tr class="border-b border-gray-100 last:border-0 hover:bg-gray-100">
+                                <td class="py-2 px-3 text-sm text-gray-600">${timeSeriesData[i].monthString}</td>
+                                <td class="py-2 px-3 text-sm font-mono">${fmtTiB(mData.total_tib)} TiB</td>
+                                <td class="py-2 px-3 text-sm">${getGrowthHTML(mData.total_tib, prevMonthData?.total_tib)}</td>
+                            </tr>
+                        `;
+                    }
+                }
+
+                const detailTr = document.createElement('tr');
+                detailTr.id = detailId;
+                detailTr.className = "hidden bg-gray-50 border-b border-gray-200";
+                detailTr.innerHTML = `
+                    <td colspan="4" class="p-6">
+                        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+
+                            <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200 lg:col-span-2 flex flex-col">
+                                <h4 class="font-bold text-gray-700 mb-3 border-b pb-2 text-sm uppercase tracking-wider">Storage Split</h4>
+
+                                <div class="flex justify-between items-center mb-2">
+                                    <div class="flex items-center gap-2">
+                                        <div class="w-3 h-3 rounded-sm bg-nyu shadow-sm"></div>
+                                        <span class="text-sm text-gray-600 truncate">CGSB:</span>
+                                    </div>
+                                    <span class="font-mono font-semibold">${fmtTiB(lab.data.cgsb_tib)}</span>
+                                </div>
+
+                                <div class="flex justify-between items-center mb-2">
+                                    <div class="flex items-center gap-2">
+                                        <div class="w-3 h-3 rounded-sm bg-nyulight shadow-sm"></div>
+                                        <span class="text-sm text-gray-600 truncate">Out:</span>
+                                    </div>
+                                    <span class="font-mono font-semibold">${fmtTiB(lab.data.gencore_tib)}</span>
+                                </div>
+
+                                <div class="w-full bg-gray-100 rounded-lg h-8 mt-4 flex overflow-hidden shadow-inner border border-gray-200">
+                                    <div class="bg-nyu h-8 transition-all duration-500" style="width: ${(lab.data.cgsb_tib / lab.data.total_tib) * 100}%" title="CGSB: ${fmtTiB(lab.data.cgsb_tib)} TiB"></div>
+                                    <div class="bg-nyulight h-8 transition-all duration-500" style="width: ${(lab.data.gencore_tib / lab.data.total_tib) * 100}%" title="Out: ${fmtTiB(lab.data.gencore_tib)} TiB"></div>
+                                </div>
+                            </div>
+
+                            <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200 lg:col-span-5 flex flex-col">
+                                <h4 class="font-bold text-gray-700 mb-3 border-b pb-2 text-sm uppercase tracking-wider">History & Growth</h4>
+                                <div class="max-h-40 overflow-y-auto pr-2 flex-grow">
+                                    <table class="w-full text-left">
+                                        <thead class="text-xs text-gray-400 uppercase sticky top-0 bg-white">
+                                            <tr><th class="pb-2 px-3 border-b">Month</th><th class="pb-2 px-3 border-b">Total</th><th class="pb-2 px-3 border-b">+/-</th></tr>
+                                        </thead>
+                                        <tbody>${historyHTML}</tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200 lg:col-span-5 flex flex-col">
+                                <h4 class="font-bold text-gray-700 mb-3 border-b pb-2 text-sm uppercase tracking-wider">Trend Graph</h4>
+                                <div class="relative h-40 w-full mt-auto">
+                                    <canvas id="chart-${index}"></canvas>
+                                </div>
+                            </div>
+
+                        </div>
+                    </td>
+                `;
+
+                tbody.appendChild(tr);
+                tbody.appendChild(detailTr);
+            });
+        }
+
+        function toggleRow(rowId, detailId, labName, index) {
+            const row = document.getElementById(rowId);
+            const detail = document.getElementById(detailId);
+
+            if (detail.classList.contains('hidden')) {
+                document.querySelectorAll('tr[id^="detail-"]').forEach(el => el.classList.add('hidden'));
+                document.querySelectorAll('tr[id^="row-"]').forEach(el => el.classList.remove('expanded', 'bg-nyubg'));
+
+                detail.classList.remove('hidden');
+                row.classList.add('expanded', 'bg-nyubg');
+                renderChart(labName, index);
+            } else {
+                detail.classList.add('hidden');
+                row.classList.remove('expanded', 'bg-nyubg');
+            }
+        }
+
+        function renderChart(labName, index) {
+            const canvasId = `chart-${index}`;
+            const ctx = document.getElementById(canvasId).getContext('2d');
+
+            if(activeCharts[canvasId]) return;
+
+            const labels = [];
+            const dataPoints = [];
+
+            for(let i = timeSeriesData.length - 1; i >= 0; i--) {
+                const monthData = timeSeriesData[i];
+                if(monthData.labs[labName]) {
+                    const shortDate = monthData.dateObj.toLocaleString('default', { month: 'short', year: '2-digit' });
+                    labels.push(shortDate);
+                    dataPoints.push(monthData.labs[labName].total_tib);
+                }
+            }
+
+            activeCharts[canvasId] = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Total Storage (TiB)',
+                        data: dataPoints,
+                        borderColor: '#57068c',
+                        backgroundColor: 'rgba(87, 6, 140, 0.1)',
+                        borderWidth: 2,
+                        pointRadius: 1,
+                        pointHoverRadius: 5,
+                        pointBackgroundColor: '#8900e1',
+                        fill: true,
+                        tension: 0.3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: false, ticks: { maxTicksLimit: 5 } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            currentSearchQuery = e.target.value;
+            renderTable();
+        });
+
+        initApp();
+    </script>
+</body>
+</html>

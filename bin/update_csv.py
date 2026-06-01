@@ -6,6 +6,7 @@ import urllib.request
 import urllib.parse
 from datetime import datetime,timedelta
 import sys
+import subprocess
 
 # --- Configuration ---
 CGSB_FS_PATH = "/projects/rps/cgsb"
@@ -15,13 +16,12 @@ CGSB_VAST_BASE = "/vast/hpc/projects/rps/cgsb"
 GENCORE_VAST_BASE = "/vast/hpc/projects/rps/cgsb/gencore/out"
 
 API_BASE_URL = "https://vast-torch-quotas-rtc-api-services.apps.cloud.rt.nyu.edu/vast/capacity?full_path="
-OUTPUT_CSV = "../html/data.csv"
+OUTPUT_CSV = "../docs/data.csv"
 
 def get_vast_capacity(vast_path):
     """Fetches the capacity from the VAST API and converts bytes to TiB."""
     encoded_path = urllib.parse.quote(vast_path, safe='')
     url = API_BASE_URL + encoded_path
-    print(url) 
     try:
         req = urllib.request.Request(url)
         with urllib.request.urlopen(req) as response:
@@ -144,6 +144,13 @@ def main():
             })
 
     print(f"Success! Appended {len(results)} chargeback records for {month_str} {year_str} to {OUTPUT_CSV}")
+
+    #try:
+    subprocess.run(["git", "add", f"{OUTPUT_CSV}"], check=True)
+    subprocess.run(["git", "commit", "-m", "Automated monthly CSV update"], check=True)
+    subprocess.run(["git", "push", "origin", "main"], check=True)
+    #except subprocess.CalledProcessError as e:
+    #  print(f"Git auto-sync failed: {e}")
 
 if __name__ == "__main__":
     main()
